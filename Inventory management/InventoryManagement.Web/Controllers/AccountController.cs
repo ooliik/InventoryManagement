@@ -10,11 +10,12 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Inventory_management.Models;
-using Inventory_management.Models.AccountViewModels;
-using Inventory_management.Services;
+using InventoryManagement.Web.Models;
+using InventoryManagement.Web.Models.AccountViewModels;
+using InventoryManagement.Web.Services;
+using InventoryManagement.BLL.Entities;
 
-namespace Inventory_management.Controllers
+namespace InventoryManagement.Web.Controllers
 {
     [Authorize]
     [Route("[controller]/[action]")]

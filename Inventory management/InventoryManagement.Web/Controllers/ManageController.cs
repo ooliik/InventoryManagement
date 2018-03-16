@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Text.Encodings.Web;
@@ -9,12 +8,11 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
-using Inventory_management.Models;
-using Inventory_management.Models.ManageViewModels;
-using Inventory_management.Services;
+using InventoryManagement.Web.Models.ManageViewModels;
+using InventoryManagement.Web.Services;
+using InventoryManagement.BLL.Entities;
 
-namespace Inventory_management.Controllers
+namespace InventoryManagement.Web.Controllers
 {
     [Authorize]
     [Route("[controller]/[action]")]
@@ -26,7 +24,8 @@ namespace Inventory_management.Controllers
         private readonly ILogger _logger;
         private readonly UrlEncoder _urlEncoder;
 
-        private const string AuthenicatorUriFormat = "otpauth://totp/{0}:{1}?secret={2}&issuer={0}&digits=6";
+        private const string AuthenticatorUriFormat = "otpauth://totp/{0}:{1}?secret={2}&issuer={0}&digits=6";
+        private const string RecoveryCodesKey = nameof(RecoveryCodesKey);
 
         public ManageController(
           UserManager<ApplicationUser> userManager,
@@ -371,18 +370,8 @@ namespace Inventory_management.Controllers
                 throw new ApplicationException($"Unable to load user with ID '{_userManager.GetUserId(User)}'.");
             }
 
-            var unformattedKey = await _userManager.GetAuthenticatorKeyAsync(user);
-            if (string.IsNullOrEmpty(unformattedKey))
-            {
-                await _userManager.ResetAuthenticatorKeyAsync(user);
-                unformattedKey = await _userManager.GetAuthenticatorKeyAsync(user);
-            }
-
-            var model = new EnableAuthenticatorViewModel
-            {
-                SharedKey = FormatKey(unformattedKey),
-                AuthenticatorUri = GenerateQrCodeUri(user.Email, unformattedKey)
-            };
+            var model = new EnableAuthenticatorViewModel();
+            await LoadSharedKeyAndQrCodeUriAsync(user, model);
 
             return View(model);
         }
@@ -391,15 +380,16 @@ namespace Inventory_management.Controllers
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> EnableAuthenticator(EnableAuthenticatorViewModel model)
         {
-            if (!ModelState.IsValid)
-            {
-                return View(model);
-            }
-
             var user = await _userManager.GetUserAsync(User);
             if (user == null)
             {
                 throw new ApplicationException($"Unable to load user with ID '{_userManager.GetUserId(User)}'.");
+            }
+
+            if (!ModelState.IsValid)
+            {
+                await LoadSharedKeyAndQrCodeUriAsync(user, model);
+                return View(model);
             }
 
             // Strip spaces and hypens
@@ -410,13 +400,30 @@ namespace Inventory_management.Controllers
 
             if (!is2faTokenValid)
             {
-                ModelState.AddModelError("model.Code", "Verification code is invalid.");
+                ModelState.AddModelError("Code", "Verification code is invalid.");
+                await LoadSharedKeyAndQrCodeUriAsync(user, model);
                 return View(model);
             }
 
             await _userManager.SetTwoFactorEnabledAsync(user, true);
             _logger.LogInformation("User with ID {UserId} has enabled 2FA with an authenticator app.", user.Id);
-            return RedirectToAction(nameof(GenerateRecoveryCodes));
+            var recoveryCodes = await _userManager.GenerateNewTwoFactorRecoveryCodesAsync(user, 10);
+            TempData[RecoveryCodesKey] = recoveryCodes.ToArray();
+
+            return RedirectToAction(nameof(ShowRecoveryCodes));
+        }
+
+        [HttpGet]
+        public IActionResult ShowRecoveryCodes()
+        {
+            var recoveryCodes = (string[])TempData[RecoveryCodesKey];
+            if (recoveryCodes == null)
+            {
+                return RedirectToAction(nameof(TwoFactorAuthentication));
+            }
+
+            var model = new ShowRecoveryCodesViewModel { RecoveryCodes = recoveryCodes };
+            return View(model);
         }
 
         [HttpGet]
@@ -443,6 +450,24 @@ namespace Inventory_management.Controllers
         }
 
         [HttpGet]
+        public async Task<IActionResult> GenerateRecoveryCodesWarning()
+        {
+            var user = await _userManager.GetUserAsync(User);
+            if (user == null)
+            {
+                throw new ApplicationException($"Unable to load user with ID '{_userManager.GetUserId(User)}'.");
+            }
+
+            if (!user.TwoFactorEnabled)
+            {
+                throw new ApplicationException($"Cannot generate recovery codes for user with ID '{user.Id}' because they do not have 2FA enabled.");
+            }
+
+            return View(nameof(GenerateRecoveryCodes));
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
         public async Task<IActionResult> GenerateRecoveryCodes()
         {
             var user = await _userManager.GetUserAsync(User);
@@ -457,11 +482,11 @@ namespace Inventory_management.Controllers
             }
 
             var recoveryCodes = await _userManager.GenerateNewTwoFactorRecoveryCodesAsync(user, 10);
-            var model = new GenerateRecoveryCodesViewModel { RecoveryCodes = recoveryCodes.ToArray() };
-
             _logger.LogInformation("User with ID {UserId} has generated new 2FA recovery codes.", user.Id);
 
-            return View(model);
+            var model = new ShowRecoveryCodesViewModel { RecoveryCodes = recoveryCodes.ToArray() };
+
+            return View(nameof(ShowRecoveryCodes), model);
         }
 
         #region Helpers
@@ -494,10 +519,23 @@ namespace Inventory_management.Controllers
         private string GenerateQrCodeUri(string email, string unformattedKey)
         {
             return string.Format(
-                AuthenicatorUriFormat,
-                _urlEncoder.Encode("Inventory_management"),
+                AuthenticatorUriFormat,
+                _urlEncoder.Encode("InventoryManagement.Web"),
                 _urlEncoder.Encode(email),
                 unformattedKey);
+        }
+
+        private async Task LoadSharedKeyAndQrCodeUriAsync(ApplicationUser user, EnableAuthenticatorViewModel model)
+        {
+            var unformattedKey = await _userManager.GetAuthenticatorKeyAsync(user);
+            if (string.IsNullOrEmpty(unformattedKey))
+            {
+                await _userManager.ResetAuthenticatorKeyAsync(user);
+                unformattedKey = await _userManager.GetAuthenticatorKeyAsync(user);
+            }
+
+            model.SharedKey = FormatKey(unformattedKey);
+            model.AuthenticatorUri = GenerateQrCodeUri(user.Email, unformattedKey);
         }
 
         #endregion

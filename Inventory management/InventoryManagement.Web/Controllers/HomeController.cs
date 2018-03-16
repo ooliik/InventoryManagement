@@ -4,12 +4,17 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
-using Inventory_management.Models;
+using InventoryManagement.Web.Models;
+using InventoryManagement.DAL.EF;
 
-namespace Inventory_management.Controllers
+namespace InventoryManagement.Web.Controllers
 {
-    public class HomeController : Controller
+    public class HomeController : BaseController
     {
+        public HomeController(ApplicationDbContext dbContext) : base(dbContext)
+        {
+        }
+
         public IActionResult Index()
         {
             return View();
