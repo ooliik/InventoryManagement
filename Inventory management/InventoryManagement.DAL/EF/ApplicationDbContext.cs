@@ -13,13 +13,19 @@ namespace InventoryManagement.DAL.EF
             : base(options)
         {
         }
+        public DbSet<Category> Categories { get; set; }
+        public DbSet<Item> Items { get; set; }
+    
 
         protected override void OnModelCreating(ModelBuilder builder)
         {
             base.OnModelCreating(builder);
-            // Customize the ASP.NET Identity model and override the defaults if needed.
-            // For example, you can rename the ASP.NET Identity table names and more.
-            // Add your customizations after calling base.OnModelCreating(builder);
+
+            builder.Entity<Category>()
+                .HasKey(ba => new { ba.CategoryID });
+
+            builder.Entity<Item>()
+                .HasKey(ba => new { ba.ItemID });
         }
 
     }

@@ -8,6 +8,7 @@ using InventoryManagement.Web.Services;
 using InventoryManagement.DAL.EF;
 using InventoryManagement.BLL.Entities;
 using InventoryManagement.Web.Configuration;
+using InventoryManagement.Web.Models;
 
 namespace InventoryManagement.Web
 {
@@ -38,6 +39,9 @@ namespace InventoryManagement.Web
             services.AddTransient<IEmailSender, EmailSender>();
 
             services.AddMvc();
+
+            services.AddDbContext<InventoryManagementWebContext>(options =>
+                    options.UseSqlServer(Configuration.GetConnectionString("InventoryManagementWebContext")));
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
